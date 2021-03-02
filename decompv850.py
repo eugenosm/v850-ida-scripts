@@ -333,7 +333,7 @@ class V850:
             prefix = f"({prefix})"
         return prefix
 
-    def parse_movs(self, ea:int) -> [bool, str, object]:
+    def parse_movs(self, ea: int) -> [bool, str, object]:
         """
         parse mov/ld commands
         :param ea: address of command
@@ -357,6 +357,22 @@ class V850:
             else:
                 return [True, arg2, f"{prefix}{v}+{arg1}"]
         return [False, '', 0]
+
+    def process_movs(self, ea: int) -> bool:
+        """
+        create regular comment of assignment (c-like) if mov/ld assignment detected (see parse_movs function)
+        :param ea: address of operation
+        :param da: disassembly string if present
+        :param offs: watch_queue offset
+        :return: parse_movs status
+        """
+        def filter_cmt(cmt: str, v='', **kwargs) -> str:
+            return cmt.replace(v, '')  # remove handmade assignments with overflowed value
+
+        [result, dest, value] = self.parse_movs(ea)
+        if result:
+            add_cmt_safe(ea, f"{dest} = {value};", filter_func=filter_cmt, v=f"{dest} = 0x1{value};")
+        return result
 
     def process_movi32(self, ea: int, da=None, offs=0) -> bool:
         """
@@ -451,7 +467,7 @@ class V850:
 
         add_cmt_safe(ea, f"{assignment}{func_name}({args_str});\n", filter_func=filter_cmt, fname=func_name, assignment=assignment)
         print(f"DEF FN:{func_name}({args_str});\n")
-
+        return True
 
 v850 = V850()
 
@@ -468,8 +484,9 @@ for segea in idautils.Segments():
                     [cmd, addr, link] = v850.parse_branch(da)
                     print(f"M/BRANCH: {cmd} {addr}, {link}\n")
                     v850.process_loop(head)
-                v850.process_movi32(head, da)
-                v850.process_fcall(head)
+                if not v850.process_movi32(head, da):
+                    if not v850.process_fcall(head):
+                        v850.process_movs(head)
 
 
 #6aa
