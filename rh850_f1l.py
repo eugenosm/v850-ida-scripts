@@ -900,7 +900,7 @@ def make_dma_seg():
 
 make_sfr_seg()
 make_dma_seg()
-hpp_files = ['E:/images/Новая папка (2)/defs/rh850_f1l.hpp']
+hpp_files = ['./rh850_f1l.hpp']
 ida_structs.import_hpp_files(hpp_files)
 ida_structs.apply_memmap(memmap)
 ida_structs.apply_simple_reg_defs(single_regs)
