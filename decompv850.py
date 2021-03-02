@@ -4,9 +4,11 @@ Does some simple decompilations and puts it in the comments
 """
 
 import idautils
-import idaapi
 import idc
 import re
+
+
+debug_mode = False
 
 
 class WatchQueue:
@@ -32,13 +34,17 @@ class WatchQueue:
     def size(self):
         return len(self.queue)
 
+    def __repr__(self):
+        r = ""
+        for i in range(self.size):
+            r += f"{i:03}/{len(self.queue) - 1-i:03}: {{'a': {self.queue[i]['a']:8x}, 'i': {self.queue[i]['i']} }}, \n"
+        return f"[{r}]"
 
-debug_mode = False
 
 re_isint = re.compile(r"^[+|\-]?(0x[0-9a-fA-F]+|[0-9]+)$")
 
 
-def isInt(s: str) -> bool:
+def is_int(s: str) -> bool:
     return bool(re_isint.match(s))
 
 
@@ -49,7 +55,7 @@ def get_int_addr(addr) -> int:
     return a
 
 
-def shift_str(x:str, shift:int):
+def shift_str(x: str, shift: int):
     if shift < 0:
         return f"({x} >> {-shift})"
     if shift > 0:
@@ -89,7 +95,8 @@ class V850:
     re_branch = re.compile(
         r"(jmp|jr|jarl|bg[te]|bl[te]|b[hlevnpczr]|bn[lhevcz]|bsa)\s+([\w\+\-\[\]]+)(,\s+([\w\+\-\[\]]+))?")
     re_v850instr = re.compile(
-        r"([\w\.]+)(\s+([\w\+\-\[\]\(\)\.]+|\{[\w\+\-\[\]\,\s]+\}|\([\w\+\-\[\]]+\))(, ([\w\+\-\[\]]+|\{[\w\+\-\[\]\,\s]+\}))?(, ([\w\+\-\[\]]+))?)?")
+        r"([\w\.]+)(\s+([\w\+\-\[\]\(\)\.]+|\{[\w\+\-\[\]\,\s]+\}|\([\w\+\-\[\]]+\))"
+        r"(, ([\w\+\-\[\]]+|\{[\w\+\-\[\]\,\s]+\}))?(, ([\w\+\-\[\]]+))?)?")
     conditions = {
         "jmp": "true", "jr": "true", "bgt": "{0} > {1}", "bge": "{0} >= {1}", "blt": "{0} < {1}", "ble": "{0} <= {1}",
         "bh": "(unsigned){0} > (unsigned){1}", "bnh": "(unsigned){0} <= (unsigned){1}", "be": "{0} == {1}",
@@ -108,7 +115,7 @@ class V850:
 
     @staticmethod
     def __hex_int(arg: object, shiftl: int, shiftr: int) -> str:
-        if int(arg) < 0:
+        if int(arg, 0) < 0:
             return f"-0x{((-arg) << shiftl) >> shiftr}"
         return f"0x{(arg << shiftl) >> shiftr}"
 
@@ -125,7 +132,7 @@ class V850:
         if shift < 0:
             shiftr = -shift
 
-        if isInt(arg):
+        if is_int(arg):
             return V850.__hex_int(arg, shiftl, shiftr)
 
         if arg in self.registers:
@@ -135,28 +142,28 @@ class V850:
             return shift_str(arg)
         return V850.__hex_int(a, shiftl, shiftr)
 
-    def represent_arg(self, arg: str, shift=0, shiftr=0, shiftl=0) -> str:
+    @staticmethod
+    def represent_arg(arg: str, shift=0, shiftr=0, shiftl=0) -> str:
         print(f"represent_arg(arg:{arg}, shift={shift}, shiftr={shiftr}, shiftl={shiftl})\n")
         if shift > 0:
             shiftl = shift
         if shift < 0:
             shiftr = -shift
 
-        if isInt(arg):
+        if is_int(arg):
             return V850.__hex_uint(arg, shiftl, shiftr)
         return shift_str(arg, shift)
 
     @staticmethod
-    def getDA(src)->str:
+    def get_da(src) -> str:
         """
         GetDisasm, without comment using ea|label as address
-        :param src: ea or label to disasm
+        :param src: ea or string to disasm
         :return: disassembled string
         """
         da = idc.GetDisasm(src) if isinstance(src, int) else src
         if '--' in da:
-            p = da.index('--')
-            da = da[:p]
+            da = da[:da.index('--')]
         return da
 
     def parse_instr(self, src: object) -> [str, str, str, str]:
@@ -168,9 +175,7 @@ class V850:
         argX - argument as string or None if
                has no argument on this position
         """
-        da = V850.getDA(src)
-        # print(f"{da} = getDA({src})")
-        m = self.re_v850instr.findall(da)
+        m = self.re_v850instr.findall(V850.get_da(src))
         cmd = m[0][0]
         arg0 = m[0][2] if len(m[0]) >= 3 and m[0][2] != '' else None
         arg1 = m[0][4] if len(m[0]) >= 5 and m[0][4] != '' else None
@@ -183,7 +188,7 @@ class V850:
         :param src: V850 assembler instruction string or address
         :return:
         """
-        da = self.getDA(src)
+        da = self.get_da(src)
         return bool(self.re_branch.match(da))
 
     def parse_branch(self, src: object) -> [str, str, str]:
@@ -195,7 +200,7 @@ class V850:
         addr - ea or label (to branch to)
         link - link register or None if not used
         """
-        da = self.getDA(src)
+        da = self.get_da(src)
         m = self.re_branch.findall(da)
         cmd = m[0][0]
         addr = m[0][1]
@@ -256,7 +261,7 @@ class V850:
                     if on_true_addr != idc.next_head(ea):
                         return False
                     print(f'LOOP DEF: do:{ea}...{on_false:x}, while({cond})\n')
-                    make_loop_cmt(ea, on_true_addr, idc.next_head(br_ea), cond, 'do_while')
+                    V850.make_loop_cmt(ea, on_true_addr, idc.next_head(br_ea), cond, 'do_while')
                     return True
         return False
 
@@ -264,9 +269,10 @@ class V850:
         if self._detect_do_while_loop(ea):
             return
 
-    def make_loop_cmt(self, init: int, start: int, end: int, cond: str, kind: str) -> None:
+    @staticmethod
+    def make_loop_cmt(init: int, start: int, end: int, cond: str, kind: str) -> None:
         """
-        make a loop commant
+        make a loop comment
         :param init: cycle init code address
         :param start: cycle open brace address
         :param end:  cycle close brace address
@@ -288,14 +294,14 @@ class V850:
             v = f"}}while({cond}); // {start:X}"
             add_cmt_safe(end, v, filter_func=do_while_filter, val=v)
 
-    def parse_movi32(self, ea: int, da=None, offs=0) -> [bool, str, int]:
+    def parse_movi32(self, ea: int, da=None, offs=0) -> [bool, str, object]:
         """
         ROM:0004A0D2                 movhi   0xFEDF, r0, gp
         ROM:0004A0D6                 movea   8000, gp, gp
         -> gp = 0xFEDF8000;
         """
         if da is None:
-            da = self.getDA(self.watch.get(0+offs)['i'])
+            da = self.get_da(self.watch.get(0 + offs)['i'])
         if ea == -1:
             ea = self.watch.get(0+offs)['a']
         [cmd0, arg00, arg01, arg02] = self.parse_instr(da)
@@ -303,16 +309,17 @@ class V850:
             return [False, '', '']
 
         w1 = self.watch.get(1+offs)
-        da1 = self.getDA(w1['i'])
+        da1 = self.get_da(w1['i'])
         ea1 = w1['a']
         [cmd1, arg10, arg11, arg12] = self.parse_instr(da1)
         if cmd1 != 'movhi' or arg02 != arg12 or arg02 != arg01 or arg11 != 'r0':
             return [False, '', '']
 
-        value = (idc.get_operand_value(ea1, 0) << 16) + idc.get_operand_value(ea, 0) & 0xFFFFFFFF
+        value = ((idc.get_operand_value(ea1, 0) << 16) + idc.get_operand_value(ea, 0)) & 0xFFFFFFFF
         return [True, arg02, value]
 
-    def _ld_st_arg0_prefix(self, cmd:str) -> str:
+    @staticmethod
+    def _ld_st_arg0_prefix(cmd:str) -> str:
         """
         generate type casting prefix for source arg of ld.xx/st.xx command
         :param cmd: parse_instr() result cmd value (must be ld.xx/st.xx)
@@ -335,17 +342,14 @@ class V850:
         dest - where to place result to
         source - parsed source value/expression/name
         """
-        da = self.getDA(ea)
+        da = self.get_da(ea)
         [cmd, arg0, arg1, arg2] = self.parse_instr(da)
         if cmd in ['mov', 'movhi', 'movea', 'ld.b', 'ld.h', 'ld.w', 'ld.bu', 'ld.hu',
                    'sld.b', 'sld.h', 'sld.w', 'sld.bu', 'sld.hu', 'ld23.b', 'ld23.h', 'ld23.w', 'ld23.bu', 'ld23.hu']:
             shift = 16 if cmd == 'movhi' else 0
-            prefix = self._ld_st_arg0_prefix(cmd) if cmd.startswith('ld.') else ''
+            prefix = V850._ld_st_arg0_prefix(cmd) if cmd.startswith('ld.') else ''
 
-            if(ea == 0x51040):
-                print(f"[{cmd}, {arg0}, {arg1}, {arg2}]\n")
-
-            v = self.represent_arg(arg0, shiftl=shift)
+            v = V850.represent_arg(arg0, shiftl=shift)
             if arg2 is None:
                 return [True, arg1, f"{prefix}{v}"]
             elif arg1 == 'r0':
@@ -362,15 +366,28 @@ class V850:
         :param offs: watch_queue offset
         :return: parse_movi32 status
         """
-        def filter(cmt: str, v='', **kwargs) -> str:
+        def filter_cmt(cmt: str, v='', **kwargs) -> str:
             return cmt.replace(v, '')  # remove handmade assignments with overflowed value
 
         [result, dest, value] = self.parse_movi32(ea, da=da, offs=offs)
         if result:
-            add_cmt_safe(ea, f"{dest} = 0x{value:X};", filter_func=filter, v=f"{dest} = 0x1{value:X};")
+            add_cmt_safe(ea, f"{dest} = 0x{value:X};", filter_func=filter_cmt, v=f"{dest} = 0x1{value:X};")
         return result
 
-    def process_fcall(self, ea:int) -> bool:
+    def _parse_pointer_argument(self, arg: str, watch_offset=0):
+        if arg.startswith('['):  # treat 'jr [rXX]' as '(*func)(...)'
+            pfunc = arg[1:-1]
+            ea1 = self.watch.get(1+watch_offset)['a']
+            [is_pfunc, pf_target, pf_value] = self.parse_movs(ea1)
+            if is_pfunc and pfunc == pf_target:
+                watch_offset += 1
+                add_cmt_safe(ea1, f"{pf_target} = {pf_value};")
+                arg = f"(*{pf_target})"
+            else:
+                arg = arg.replace('[', '(*').replace(']', ')')
+        return [arg, watch_offset]
+
+    def process_fcall(self, ea: int) -> bool:
         """
         create c-like function call ida comment if jarl detected
         :param ea: addres of jarl command (if not, returns False status)
@@ -382,8 +399,10 @@ class V850:
         ROM:0004A0B2           mov     2, r9
         ROM:0004A0B4           jarl    sub_488F4, lp  -- sub_488F4(r6:G_STBC0PSC, r7:0xfff80000, r8:G_PROTS0, r9:0x2);
         """
-        def apply_farg(func, **kwargs):
-            [ok, dest, val] = func(self.watch.get(i)['a'], **kwargs)
+        def apply_farg(func, idx, **kwargs):
+            if idx >= self.watch.size:
+                return False
+            [ok, dest, val] = func(self.watch.get(idx)['a'], **kwargs)
             ok = ok and (dest in fargs)
             if ok:
                 fargs[dest] = val
@@ -392,24 +411,24 @@ class V850:
         [cmd, func_name, _, _] = self.parse_instr(self.watch.get(0)['i'])
         if cmd not in ['jarl']:
             return False
-        args_offset = 1
 
-        if func_name.startswith('['):
-            pfunc = func_name[1:-1]
-            ea1 = self.watch.get(1)['a']
-            [is_pfunc, pf_target, pf_value] = self.parse_movs(ea1)
-            if is_pfunc and pfunc == pf_target:
-                args_offset += 1
-                add_cmt_safe(ea1, f"{pf_target} = {pf_value};")
-                func_name = f"(*{pf_target})"
-            else:
-                func_name = func_name.replace('[', '(*').replace(']', ')')
+        """  
+        ROM:0003ABB0                 ld.w    [r11], r28      -- r28 = [r11];
+        ROM:0003ABB4                 jarl    [r28], lp       --
+        """
+        [func_name, args_offset] = self._parse_pointer_argument(func_name, 0)
+        args_offset += 1
 
         fargs = {'r6': None, 'r7': None, 'r8': None, 'r9': None}
-        for i in range(args_offset, self.watch.size, 1):
-            if not apply_farg(self.parse_movi32, offs=i):
-                if not apply_farg(self.parse_movs):
+
+        watches = iter(range(args_offset, self.watch.size, 1))
+        for i in watches:
+            if not apply_farg(self.parse_movi32, i, offs=i):
+                if not apply_farg(self.parse_movs, i):
                     break
+            else:
+                next(watches)
+
         args_str = ''
         for i in ['r6', 'r7', 'r8', 'r9']:
             v = fargs[i]
@@ -426,11 +445,11 @@ class V850:
         [is_assignment, f_dest, f_result] = self.parse_movs(next_ea)
         assignment = f"{f_dest} = " if is_assignment and f_result == 'r10' else ''
 
-        def filter(cmt: str, fname='', assignment='', **kwargs) -> str:
+        def filter_cmt(cmt: str, fname='', assignment='', **kwargs) -> str:
             r = f"(^\s*({re.escape(assignment)})?{re.escape(fname)}\(.*\);\s*$|^\s*\[\w+\]\(.*\);\s*$)"
             return re.sub(r, '', cmt)
 
-        add_cmt_safe(ea, f"{assignment}{func_name}({args_str});\n", filter_func=filter, fname=func_name, assignment=assignment)
+        add_cmt_safe(ea, f"{assignment}{func_name}({args_str});\n", filter_func=filter_cmt, fname=func_name, assignment=assignment)
         print(f"DEF FN:{func_name}({args_str});\n")
 
 
@@ -442,7 +461,8 @@ for segea in idautils.Segments():
         for (startea, endea) in idautils.Chunks(funcea):
             for head in idautils.Heads(startea, endea):
                 v850.watch.push(head)
-                print(f"{functionName}: {head:8x} : {idc.GetDisasm(head)}\n")
+                if debug_mode:
+                    print(f"{functionName}: {head:8x} : {idc.GetDisasm(head)}\n")
                 da = v850.watch.get(0)['i']
                 if v850.check_branch(da):
                     [cmd, addr, link] = v850.parse_branch(da)
