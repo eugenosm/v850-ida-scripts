@@ -898,8 +898,21 @@ def make_dma_seg():
     make_seg(0xFFFF8000, 0xFFFFAFFF, 'DMA_INTC', 'DATA')
 
 
+def create_segments():
+    make_seg(0X1000000, 0X1008000, 'CFEXT', 'CODE')
+    make_seg(0X2000000, 0X2100000, "EXT_CS0", "RAM")
+    make_seg(0X2400000, 0X2500000, "EXT_CS1", "RAM")
+    make_seg(0X2800000, 0X2900000, "EXT_CS2", "RAM")
+    make_seg(0X3000000, 0X3100000, "EXT_CS3", "RAM")
+    make_seg(0XFEDD8000, 0XFEE08000, "RAM", "RAM")
+    make_seg(0XFF200000, 0XFF208000, "DFLASH", "DATA")
+
+
+
 make_sfr_seg()
 make_dma_seg()
+create_segments()
+
 hpp_files = ['./rh850_f1l.hpp']
 ida_structs.import_hpp_files(hpp_files)
 ida_structs.apply_memmap(memmap)
