@@ -347,7 +347,7 @@ class V850:
                    'sld.b', 'sld.h', 'sld.w', 'sld.bu', 'sld.hu', 'ld23.b', 'ld23.h', 'ld23.w', 'ld23.bu', 'ld23.hu',
                    'st.b', 'st.h', 'st.w', 'sst.b', 'sst.h', 'sst.w', 'st23.b', 'st23.h', 'st23.w', ]:
             shift = 16 if cmd == 'movhi' else 0
-            prefix = V850._ld_st_arg0_prefix(cmd) if ("ld." in cmd) or ("st" in cmd) else ''
+            prefix = V850._ld_st_arg0_prefix(cmd) if ("ld." in cmd) or ("st." in cmd) else ''
 
             v = V850.represent_arg(arg0, shiftl=shift)
             if arg2 is None:
