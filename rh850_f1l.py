@@ -876,8 +876,8 @@ def prepare_math_ports(src:str, n_values: list, bases: dict) -> str:
     return '\n'.join(result)
 
 
-def make_seg(start, end, name, class_name):
-    if not idc.AddSeg(start, end, 0, 1, 0, idaapi.scPub):
+def make_seg(start, end, name, class_name, base=0, use32=1, align=idaapi.saRelByte, comb=idaapi.scPub):
+    if not idc.AddSeg(start, end, base, use32, align, comb):
         logger.error('failed to add segment: 0x%x', start)
         return -1
     if not idc.set_segm_name(start, name):
@@ -886,8 +886,10 @@ def make_seg(start, end, name, class_name):
     if not idc.set_segm_class(start, class_name):
         logger.warning('failed to set segment class %s: %s', class_name, name)
 
-    if not idc.set_segm_alignment(start, idc.saRelPara):
+    if not idc.set_segm_alignment(start, align):
         logger.warning('failed to align segment: %s', name)
+
+    idc.set_segm_type(start, comb)
 
 
 def make_sfr_seg():

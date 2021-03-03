@@ -144,7 +144,6 @@ class V850:
 
     @staticmethod
     def represent_arg(arg: str, shift=0, shiftr=0, shiftl=0) -> str:
-        print(f"represent_arg(arg:{arg}, shift={shift}, shiftr={shiftr}, shiftl={shiftl})\n")
         if shift > 0:
             shiftl = shift
         if shift < 0:
@@ -319,7 +318,7 @@ class V850:
         return [True, arg02, value]
 
     @staticmethod
-    def _ld_st_arg0_prefix(cmd:str) -> str:
+    def _ld_st_arg0_prefix(cmd: str) -> str:
         """
         generate type casting prefix for source arg of ld.xx/st.xx command
         :param cmd: parse_instr() result cmd value (must be ld.xx/st.xx)
@@ -345,9 +344,10 @@ class V850:
         da = self.get_da(ea)
         [cmd, arg0, arg1, arg2] = self.parse_instr(da)
         if cmd in ['mov', 'movhi', 'movea', 'ld.b', 'ld.h', 'ld.w', 'ld.bu', 'ld.hu',
-                   'sld.b', 'sld.h', 'sld.w', 'sld.bu', 'sld.hu', 'ld23.b', 'ld23.h', 'ld23.w', 'ld23.bu', 'ld23.hu']:
+                   'sld.b', 'sld.h', 'sld.w', 'sld.bu', 'sld.hu', 'ld23.b', 'ld23.h', 'ld23.w', 'ld23.bu', 'ld23.hu',
+                   'st.b', 'st.h', 'st.w', 'sst.b', 'sst.h', 'sst.w', 'st23.b', 'st23.h', 'st23.w', ]:
             shift = 16 if cmd == 'movhi' else 0
-            prefix = V850._ld_st_arg0_prefix(cmd) if cmd.startswith('ld.') else ''
+            prefix = V850._ld_st_arg0_prefix(cmd) if ("ld." in cmd) or ("st" in cmd) else ''
 
             v = V850.represent_arg(arg0, shiftl=shift)
             if arg2 is None:
