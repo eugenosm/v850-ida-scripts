@@ -91,6 +91,7 @@ def add_cmt_safe(ea: int, text: str, is_rpt=False, filter_func=None, **kwargs) -
 class V850:
     watch: WatchQueue
     registers: list
+    srs: dict
 
     re_branch = re.compile(
         r"(jmp|jr|jarl|bg[te]|bl[te]|b[hlevnpczr]|bn[lhevcz]|bsa)\s+([\w\+\-\[\]]+)(,\s+([\w\+\-\[\]]+))?")
@@ -106,12 +107,127 @@ class V850:
         "bz": "{0} == {1}", "bnz": "{0} != {1}", "bsa": "{0} ? {1}"
     }
 
+    srs_source = """        
+        sr0, 0, EIPC, *1 Status save registers when acknowledging EI level exception, SV
+        sr1, 0, EIPSW, Status save registers when acknowledging EI level exception,  SV
+        sr2, 0, FEPC, *1 Status save registers when acknowledging FE level exception, SV
+        sr3, 0, FEPSW, Status save registers when acknowledging FE level exception,  SV
+        sr5, 0, PSW, Program status word, *2
+        sr13, 0, EIIC, EI level exception cause, SV
+        sr14, 0, FEIC, FE level exception cause, SV
+        sr16, 0, CTPC, *1 CALLT execution status save register, UM
+        sr17, 0, CTPSW, CALLT execution status save register, UM
+        sr20, 0, CTBP, *1 CALLT base pointer, UM
+        sr28, 0, EIWR, EI level exception working register, SV
+        sr29, 0, FEWR, FE level exception working register, SV
+        sr31, 0, BSEL, Not implemented.A value of 0 is returned when read and writing is ignored., SV
+        sr0, 1, MCFG0, Machine configuration 0, SV
+        sr2, 1, RBASE, *1 Reset vector base address, SV
+        sr3, 1, EBASE, *1 Exception handler vector address, SV
+        sr4, 1, INTBP, *1 Base address of the interrupt handler table, SV
+        sr5, 1, MCTL, CPU control, SV
+        sr6, 1, PID, Processor ID, SV
+        sr11, 1, SCCFG, SYSCALL operation setting, SV
+        sr12, 1, SCBP, *1 SYSCALL base pointer, SV
+        sr0, 2, HTCFG0, Thread configuration, SV
+        sr6, 2, MEA, Memory error address, SV
+        sr7, 2, ASID, Address space ID, SV
+        sr8, 2, MEI, Memory error information, SV
+        sr10, 2, ISPR, Priority of interrupt being serviced, SV
+        sr11, 2, PMR, Interrupt priority masking, SV
+        sr12, 2, ICSR, Interrupt control status, SV
+        sr13, 2, INTCFG, Interrupt function setting, SV                
+        SR0, 5, MPM, Memory protection operation mode setting, SV
+        sr1, 5, MPRC, MPU region control, SV
+        sr4, 5, MPBRGN, MPU base region number, SV
+        sr5, 5, MPTRGN, MPU end region number, SV
+        sr0, 6, MPLA0, Protection area minimum address, SV
+        sr1, 6, MPUA0, Protection area maximum address, SV
+        sr2, 6, MPAT0, Protection area attribute, SV
+        sr4, 6, MPLA1, Protection area minimum address, SV
+        sr5, 6, MPUA1, Protection area maximum address, SV
+        sr6, 6, MPAT1, Protection area attribute, SV
+        sr8, 6, MPLA2, Protection area minimum address, SV
+        sr9, 6, MPUA2, Protection area maximum address, SV
+        sr10, 6, MPAT2, Protection area attribute, SV
+        sr12, 6, MPLA3, Protection area minimum address, SV
+        sr13, 6, MPUA3, Protection area maximum address, SV
+        sr14, 6, MPAT3, Protection area attribute, SV        
+        sr16, 6, , MPLA4, SV
+        sr17, 6, , MPUA4, SV
+        sr18, 6, , MPAT4, SV
+        sr20, 6, , MPLA5, SV
+        sr21, 6, , MPUA5, SV
+        sr22, 6, , MPAT5, SV
+        sr24, 6, , MPLA6, SV
+        sr25, 6, , MPUA6, SV
+        sr26, 6, , MPAT6, SV
+        sr28, 6, , MPLA7, SV
+        sr29, 6, , MPUA7, SV
+        sr30, 6, , MPAT7, SV
+        sr0, 7, , MPLA8, SV
+        sr1, 7, , MPUA8, SV
+        sr2, 7, , MPAT8, SV
+        sr4, 7, , MPLA9, SV
+        sr5, 7, , MPUA9, SV
+        sr6, 7, , MPAT9, SV
+        sr8, 7, , MPLA10, SV
+        sr9, 7, , MPUA10, SV
+        sr10, 7, , MPAT10, SV
+        sr12, 7, , MPLA11, SV
+        sr13, 7, , MPUA11, SV
+        sr14, 7, , MPAT11, SV
+        sr16, 7, , MPLA12, SV
+        sr17, 7, , MPUA12, SV
+        sr18, 7, , MPAT12, SV
+        sr20, 7, , MPLA13, SV
+        sr21, 7, , MPUA13, SV
+        sr22, 7, , MPAT13, SV
+        sr24, 7, , MPLA14, SV
+        sr25, 7, , MPUA14, SV
+        sr26, 7, , MPAT14, SV
+        sr28, 7, , MPLA15, SV
+        sr29, 7, , MPUA15, SV
+        sr30, 7, , MPAT15, SV        
+        sr12, 4, BWERRL, , SV
+        sr13, 4, BWERRH, , SV
+        sr14, 4, BRERRL, , SV
+        sr15, 4, BRERRH, , SV
+        sr16, 4, ICTAGL, , SV
+        sr17, 4, ICTAGH, , SV
+        sr18, 4, ICDATL, , SV
+        sr19, 4, ICDATH, , SV
+        sr20, 4, DCTAGL, , SV
+        sr21, 4, DCTAGH, , SV
+        sr22, 4, DCDATL, , SV
+        sr23, 4, DCDATH, , SV
+        sr24, 4, ICCTRL, , SV
+        sr25, 4, DCCTRL, , SV
+        sr26, 4, ICCFG, , SV
+        sr27, 4, DCCFG, , SV
+        sr28, 4, ICERR, , SV
+        sr29, 4, DCERR, , SV        
+    """
+
     def __init__(self):
         self.watch = WatchQueue()
         self.registers = list()
         for i in range(32):
             self.registers.append(f'r{i}')
         self.registers.extend(['sp', 'gp', 'tp', 'ep', 'lp', 'PC'])
+        self.srs = dict()
+        """
+            self.srs[str srX][int selID]  = {"symbol": "SR Name", "comment": "text", "access": "SV|UM|*2"}
+        """
+        for line in V850.srs_source.split("\n"):
+            parts = line.strip().split(", ")
+            if len(parts) < 5:
+                continue
+            if parts[0] not in self.srs:
+                print(f"create: self.srs[{parts[0]}] = dict()\n")
+                self.srs[parts[0]] = dict()
+            print(f"self.srs[{parts[0]}][{parts[1]}] = {{ {parts[2]}, ... }}\n")
+            self.srs[parts[0]][int(parts[1])] = {"symbol": parts[2], "comment": parts[3], "access": parts[4]}
 
     @staticmethod
     def __hex_int(arg: object, shiftl: int, shiftr: int) -> str:
@@ -125,6 +241,15 @@ class V850:
         if v < 0:
             v += (2**32)
         return f"0x{v:x}"
+
+    def get_srs(self, id: str, sel=None):
+        if id not in self.srs:
+            return id
+        sel_id = 0 if sel is None else int(sel, 0)
+        # print(f"{self.srs[id]}\n")
+        if sel_id not in self.srs[id]:
+            return id
+        return self.srs[id][sel_id]['symbol']
 
     def get_ida_int_or_expr(self, arg: str, shift=0, shiftr=0, shiftl=0) -> str:
         if shift > 0:
@@ -345,11 +470,16 @@ class V850:
         [cmd, arg0, arg1, arg2] = self.parse_instr(da)
         if cmd in ['mov', 'movhi', 'movea', 'ld.b', 'ld.h', 'ld.w', 'ld.bu', 'ld.hu',
                    'sld.b', 'sld.h', 'sld.w', 'sld.bu', 'sld.hu', 'ld23.b', 'ld23.h', 'ld23.w', 'ld23.bu', 'ld23.hu',
-                   'st.b', 'st.h', 'st.w', 'sst.b', 'sst.h', 'sst.w', 'st23.b', 'st23.h', 'st23.w', ]:
+                   'st.b', 'st.h', 'st.w', 'sst.b', 'sst.h', 'sst.w', 'st23.b', 'st23.h', 'st23.w', 'ldsr', 'stsr']:
+            if cmd == 'ldsr':
+                return [True, self.get_srs(arg1, arg2), arg0]
+            if cmd == 'stsr':
+                return [True, arg1, self.get_srs(arg0, arg2)]
+
             shift = 16 if cmd == 'movhi' else 0
             prefix = V850._ld_st_arg0_prefix(cmd) if ("ld." in cmd) or ("st." in cmd) else ''
-
             v = V850.represent_arg(arg0, shiftl=shift)
+
             if arg2 is None:
                 return [True, arg1, f"{prefix}{v}"]
             elif arg1 == 'r0':
@@ -389,6 +519,15 @@ class V850:
         if result:
             add_cmt_safe(ea, f"{dest} = 0x{value:X};", filter_func=filter_cmt, v=f"{dest} = 0x1{value:X};")
         return result
+
+    @staticmethod
+    def _parse_pointer_value(self, value: str):
+        if not isinstance(value, str):
+            return value
+        if value.startswith('['):
+            pval = value[1:-1]
+            return pval.replace('[', '*').replace(']', '')
+        return value
 
     def _parse_pointer_argument(self, arg: str, watch_offset=0):
         if arg.startswith('['):  # treat 'jr [rXX]' as '(*func)(...)'
